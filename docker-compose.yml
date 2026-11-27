@@ -1,0 +1,23 @@
+services:
+  localstack:
+    image: localstack/localstack:3.8.0
+    container_name: localstack-transcodificacao
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3,lambda,dynamodb,sqs,sns,apigateway,iam
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_REGION: us-east-1
+      DEBUG: "0"
+      LS_LOG: warn
+    volumes:
+      - "./.localstack:/var/lib/localstack"
+      - "./build:/opt/lambda-packages:ro"
+      - "./config:/opt/config:ro"
+      # Necessário para o executor de Lambdas do LocalStack usar o runtime python3.11
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4566/_localstack/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
