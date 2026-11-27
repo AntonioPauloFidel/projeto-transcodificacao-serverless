@@ -49,7 +49,7 @@ Serviço serverless orientado a eventos que recebe fotos e vídeos, persiste met
 | Lambda | `transcode-worker` | Consome SQS, transcodifica, atualiza status e publica no SNS. |
 | Lambda | `status-handler` | Consulta `GET /media/{id}` no DynamoDB. |
 
-**Deduplicação:** o upload pelo API e o trigger do S3 geram duas mensagens para o mesmo arquivo. O worker usa uma condição no DynamoDB (`status IN (PENDING, FAILED) → PROCESSING`) para processar apenas uma vez. Falhas reais voltam para a fila e, após 3 tentativas, vão para a DLQ.
+**Deduplicação:** o upload pelo API e o trigger do S3 geram duas mensagens para o mesmo arquivo. O worker usa uma condição no DynamoDB (`status IN (PENDING, FAILED) → PROCESSING`) para processar apenas uma vez. Falhas reais voltam para a fila e, após 3 tentativas, vão para a DLQ. Se uma mensagem chega enquanto a mídia está em `PROCESSING`, ela volta para a fila em vez de ser descartada; quando o `PROCESSING` tem mais de `PROCESSING_TIMEOUT_SECONDS` (padrão 120 s, igual ao timeout da Lambda), o worker considera que a execução anterior caiu e retoma a mídia.
 
 **Transcodificação:** usa Pillow para imagens e FFmpeg para vídeos quando disponíveis. Se as bibliotecas/binários não estiverem no container de execução, o worker aplica um mock leve e registra o modo em `transcode_mode` (`pillow`, `ffmpeg`, `mock(no-pillow)`, `mock(no-ffmpeg-or-invalid-input)`).
 
@@ -74,7 +74,26 @@ chmod +x scripts/*.sh
 
 # 3. Teste ponta a ponta
 ./scripts/test-flow.sh
+
+# 4. Testes de regressão (quedas e internet lenta, ~3 min)
+./scripts/test-regression.sh
 ```
+
+### Testes de regressão
+
+`scripts/test-regression.sh` roda `tests/test_regressao.py` (só biblioteca padrão do Python) contra o LocalStack já provisionado. Cada cenário roda para uma imagem e para um vídeo e, no final, o script imprime o que aconteceu com cada mídia:
+
+| # | Cenário | O que é verificado |
+|---|---|---|
+| 01 | Conexão cai no meio do upload | Nada fica salvo pela metade (DynamoDB/S3) e o reenvio com o mesmo `media_id` conclui |
+| 02 | Upload com internet lenta (~50 KB/s) | O upload é aceito e a mídia chega a `COMPLETED` |
+| 03 | Download do resultado cai no meio | A retomada com `Range` continua do byte onde parou (HTTP 206) e o arquivo final é idêntico |
+| 04 | API cai depois de gravar no S3 | O trigger do S3 cria o registro e conclui o processamento |
+| 05 | Armazenamento do original fora do ar por pouco tempo | A mídia fica `FAILED` (com aviso no SNS) e o retry automático da fila conclui quando o armazenamento volta |
+| 06 | Armazenamento fora além das 3 tentativas | A mensagem vai para a DLQ, a mídia fica `FAILED` e, reenviada da DLQ, conclui |
+| 07 | Worker cai no meio do processamento | A mensagem reentregue retoma a mídia que ficou em `PROCESSING` |
+
+Durante a execução, o teste reduz o `VisibilityTimeout` da fila para 10 s (e restaura o valor original no final), cria buckets temporários `regressao-*` e os apaga ao terminar.
 
 Para parar e apagar o estado local:
 
@@ -192,9 +211,12 @@ python3 -m json.tool .localstack/sns-messages.json
 ├── scripts/
 │   ├── build-lambdas.sh             # empacotamento dos zips
 │   ├── init-localstack.sh           # provisionamento idempotente com awslocal
-│   └── test-flow.sh                 # teste ponta a ponta
+│   ├── test-flow.sh                 # teste ponta a ponta
+│   └── test-regression.sh           # testes de regressão (quedas e internet lenta)
+├── tests/
+│   └── test_regressao.py
 ├── build/                           # gerado (zips, configs temporárias)
-└── .localstack/                     # gerado (estado, API key, env)
+└── .localstack/                     # gerado (API key, env, notificações do teste)
 ```
 
 

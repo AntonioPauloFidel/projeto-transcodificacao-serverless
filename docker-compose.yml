@@ -11,7 +11,7 @@ services:
       DEBUG: "0"
       LS_LOG: warn
     volumes:
-      - "./.localstack:/var/lib/localstack"
+      - "localstack-data:/var/lib/localstack"
       - "./build:/opt/lambda-packages:ro"
       - "./config:/opt/config:ro"
       # Necessário para o executor de Lambdas do LocalStack usar o runtime python3.11
@@ -21,3 +21,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
+
+volumes:
+  localstack-data:

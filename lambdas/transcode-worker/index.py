@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote, unquote_plus
 
@@ -30,12 +30,17 @@ MEDIA_TABLE = os.environ.get("MEDIA_TABLE", "MediaMetadata")
 TOPIC_ARN = os.environ.get("TOPIC_ARN", "")
 PUBLIC_ENDPOINT = os.environ.get("PUBLIC_S3_ENDPOINT", "http://localhost:4566").rstrip("/")
 MAX_IMAGE_SIZE = int(os.environ.get("MAX_IMAGE_SIZE", "1280"))
+PROCESSING_TIMEOUT_SECONDS = int(os.environ.get("PROCESSING_TIMEOUT_SECONDS", "120"))
 
 s3 = boto3.client("s3", region_name=REGION)
 dynamodb = boto3.client("dynamodb", region_name=REGION)
 sns = boto3.client("sns", region_name=REGION)
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
+
+
+class ProcessingInProgress(Exception):
+    pass
 
 
 def _now() -> str:
@@ -103,27 +108,43 @@ def _ensure_record(media_id: str, bucket: str, key: str) -> None:
 
 
 def _claim(media_id: str) -> bool:
-    """Deduplica eventos: só PENDING/FAILED podem virar PROCESSING."""
+    """Deduplica eventos: PENDING/FAILED ou PROCESSING abandonado podem virar PROCESSING."""
+    stale_before = (
+        datetime.now(timezone.utc) - timedelta(seconds=PROCESSING_TIMEOUT_SECONDS)
+    ).isoformat(timespec="seconds")
     try:
         dynamodb.update_item(
             TableName=MEDIA_TABLE,
             Key={"media_id": {"S": media_id}},
             UpdateExpression="SET #s = :processing, processing_started_at = :ts",
-            ConditionExpression="attribute_exists(media_id) AND #s IN (:pending, :failed)",
+            ConditionExpression=(
+                "attribute_exists(media_id) AND (#s IN (:pending, :failed) "
+                "OR (#s = :processing AND processing_started_at < :stale_before))"
+            ),
             ExpressionAttributeNames={"#s": "status"},
             ExpressionAttributeValues={
                 ":processing": {"S": "PROCESSING"},
                 ":pending": {"S": "PENDING"},
                 ":failed": {"S": "FAILED"},
+                ":stale_before": {"S": stale_before},
                 ":ts": {"S": _now()},
             },
         )
         return True
     except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
-            logger.info("Evento duplicado/ignorado para %s", media_id)
-            return False
-        raise
+        if exc.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+            raise
+
+    current = dynamodb.get_item(
+        TableName=MEDIA_TABLE,
+        Key={"media_id": {"S": media_id}},
+        ConsistentRead=True,
+    ).get("Item", {})
+    if current.get("status", {}).get("S") == "PROCESSING":
+        started_at = current.get("processing_started_at", {}).get("S", "?")
+        raise ProcessingInProgress(f"{media_id} em PROCESSING desde {started_at}")
+    logger.info("Evento duplicado/ignorado para %s", media_id)
+    return False
 
 
 def _download(bucket: str, key: str) -> Path:
@@ -274,6 +295,7 @@ def _process(media_id: str, bucket: str, key: str) -> None:
 
 
 def handler(event, context):
+    retry = []
     for record in event.get("Records", []):
         body = record.get("body") or "{}"
         try:
@@ -309,5 +331,15 @@ def handler(event, context):
                     key.encode("utf-8")
                 ).hexdigest()[:16]
 
-        _process(media_id, bucket, key)
+        try:
+            _process(media_id, bucket, key)
+        except ProcessingInProgress as exc:
+            logger.info("Mídia ainda em processamento, a mensagem volta para a fila: %s", exc)
+            retry.append(media_id)
+        except Exception:
+            logger.exception("Falha ao processar %s; a mensagem volta para a fila", media_id)
+            retry.append(media_id)
+
+    if retry:
+        raise RuntimeError(f"Mensagens que voltam para a fila: {', '.join(retry)}")
     return {"batchItemFailures": []}
