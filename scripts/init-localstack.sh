@@ -17,6 +17,8 @@ QUEUE_NAME="media-transcode-queue"
 DLQ_NAME="media-transcode-dlq"
 TOPIC_NAME="media-status-notifications"
 API_NAME="media-transcode-api"
+LAMBDA_IMAGE="public.ecr.aws/lambda/python:3.11"
+LAMBDA_PLATFORM="linux/amd64"
 
 for zip in upload-handler.zip transcode-worker.zip status-handler.zip; do
   if [[ ! -f "$BUILD/$zip" ]]; then
@@ -156,6 +158,18 @@ ROLE_ARN="$(alc iam get-role --role-name media-lambda-role --query 'Role.Arn' --
 # ------------------------------------------------------------- Lambdas
 BASE_VARS="AWS_DEFAULT_REGION=$REGION,RAW_BUCKET=$RAW_BUCKET,PROCESSED_BUCKET=$PROCESSED_BUCKET,MEDIA_TABLE=$TABLE,TOPIC_ARN=$TOPIC_ARN,PUBLIC_S3_ENDPOINT=$PUBLIC_S3_ENDPOINT"
 
+runtime_present() {
+  docker image inspect --platform "$LAMBDA_PLATFORM" "$LAMBDA_IMAGE" >/dev/null 2>&1 \
+    || [[ "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$LAMBDA_IMAGE" 2>/dev/null)" == "$LAMBDA_PLATFORM" ]]
+}
+
+if runtime_present; then
+  echo "[init] Runtime das Lambdas já disponível ($LAMBDA_IMAGE, $LAMBDA_PLATFORM)"
+else
+  echo "[init] Baixando o runtime das Lambdas ($LAMBDA_IMAGE, $LAMBDA_PLATFORM)..."
+  docker pull --platform "$LAMBDA_PLATFORM" "$LAMBDA_IMAGE"
+fi
+
 deploy_function() {
   local name="$1" environment="$2"
   # Recriar é mais confiável no LocalStack do que atualizar $LATEST.
@@ -175,6 +189,10 @@ deploy_function() {
     --timeout 120 \
     --memory-size 512 \
     --environment "$environment" >/dev/null
+  if ! alc lambda wait function-active-v2 --function-name "$name"; then
+    echo "[init] Lambda $name não ficou ativa; veja: docker compose -f '$COMPOSE_FILE' logs localstack" >&2
+    exit 1
+  fi
   echo "[init] Lambda $name pronta"
 }
 
