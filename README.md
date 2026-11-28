@@ -2,6 +2,15 @@
 
 Serviço serverless orientado a eventos que recebe fotos e vídeos, persiste metadados, processa os arquivos de forma assíncrona e notifica o cliente sobre o progresso. Tudo roda localmente com [LocalStack](https://localstack.cloud/).
 
+## Integrantes
+
+- Antonio Fidel
+- Danilo Fernandes
+- Paulo Gosik
+- Werner
+
+Trabalho da disciplina de Computação em Nuvem (2026/2).
+
 ## Arquitetura
 
 ```
@@ -214,6 +223,17 @@ docker compose exec -T localstack awslocal sqs get-queue-attributes \
 python3 -m json.tool .localstack/sns-messages.json
 ```
 
+## Apresentação
+
+Os slides da apresentação estão em `apresentacao/index.html`, um arquivo único com as ilustrações embutidas. Para abrir, basta dar duplo clique no arquivo (Chrome ou Edge).
+
+- Setas, espaço ou clique avançam e voltam os slides.
+- `F` coloca em tela cheia.
+- `N` mostra as notas do apresentador, com o tempo sugerido de cada slide.
+- `Ctrl+P` (ou `Cmd+P` no Mac) gera um PDF com um slide por página.
+
+As fontes vêm do Google Fonts; sem internet, o texto usa fontes do sistema. O visual é baseado no modelo "Isometric Clouds Infographics", da Slidesgo.
+
 ## Estrutura de arquivos
 
 ```
@@ -235,6 +255,8 @@ python3 -m json.tool .localstack/sns-messages.json
 │   └── test_regressao.py
 ├── interface/
 │   └── index.html                   # demo ao vivo, publicada no bucket media-ui
+├── apresentacao/
+│   └── index.html                   # slides da apresentação
 ├── build/                           # gerado (zips, configs temporárias)
 └── .localstack/                     # gerado (API key, env, notificações do teste)
 ```
