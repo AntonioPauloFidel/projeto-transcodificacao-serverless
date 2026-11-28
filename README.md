@@ -2,6 +2,15 @@
 
 Serviço serverless orientado a eventos que recebe fotos e vídeos, persiste metadados, processa os arquivos de forma assíncrona e notifica o cliente sobre o progresso. Tudo roda localmente com [LocalStack](https://localstack.cloud/).
 
+## Integrantes
+
+- Antonio Fidel
+- Danilo Fernandes
+- Paulo Gosik
+- Werner
+
+Trabalho da disciplina de Computação em Nuvem (2026/2).
+
 ## Arquitetura
 
 ```
@@ -51,7 +60,7 @@ Serviço serverless orientado a eventos que recebe fotos e vídeos, persiste met
 
 **Deduplicação:** o upload pelo API e o trigger do S3 geram duas mensagens para o mesmo arquivo. O worker usa uma condição no DynamoDB (`status IN (PENDING, FAILED) → PROCESSING`) para processar apenas uma vez. Falhas reais voltam para a fila e, após 3 tentativas, vão para a DLQ. Se uma mensagem chega enquanto a mídia está em `PROCESSING`, ela volta para a fila em vez de ser descartada; quando o `PROCESSING` tem mais de `PROCESSING_TIMEOUT_SECONDS` (padrão 120 s, igual ao timeout da Lambda), o worker considera que a execução anterior caiu e retoma a mídia.
 
-**Transcodificação:** usa Pillow para imagens e FFmpeg para vídeos quando disponíveis. Se as bibliotecas/binários não estiverem no container de execução, o worker aplica um mock leve e registra o modo em `transcode_mode` (`pillow`, `ffmpeg`, `mock(no-pillow)`, `mock(no-ffmpeg-or-invalid-input)`).
+**Transcodificação:** usa Pillow para imagens e FFmpeg para vídeos quando disponíveis. Se as bibliotecas/binários não estiverem no container de execução, o worker aplica um mock leve e registra o modo em `transcode_mode` (`pillow`, `ffmpeg`, `mock(no-pillow)`, `mock(no-ffmpeg-or-invalid-input)`). O `build-lambdas.sh` baixa o Pillow compilado para Linux x86_64 (`manylinux2014`, compatível com o runtime `python3.11` da Lambda), então a imagem é convertida de verdade em qualquer máquina. O runtime da Lambda não traz FFmpeg, então o vídeo passa pelo fluxo inteiro em modo simulado.
 
 ## Pré-requisitos
 
@@ -94,6 +103,24 @@ chmod +x scripts/*.sh
 | 07 | Worker cai no meio do processamento | A mensagem reentregue retoma a mídia que ficou em `PROCESSING` |
 
 Durante a execução, o teste reduz o `VisibilityTimeout` da fila para 10 s (e restaura o valor original no final), cria buckets temporários `regressao-*` e os apaga ao terminar.
+
+### Interface gráfica (demo ao vivo)
+
+O `init-localstack.sh` publica `interface/index.html` no bucket `media-ui` do próprio LocalStack. Depois de rodar o init, abra no navegador:
+
+```
+http://localhost:4566/media-ui/index.html
+```
+
+A página fica no mesmo endereço da API, então conversa com o API Gateway, o S3 e o SQS do LocalStack sem configuração extra. Ela mostra:
+
+- o diagrama com cada serviço acendendo à medida que a mídia passa por ele (API Gateway, Lambdas, S3, SQS, DynamoDB, SNS);
+- as etapas `PENDING → PROCESSING → COMPLETED` com os tempos;
+- os eventos ao vivo, incluindo as notificações do SNS, que chegam por uma fila própria (`media-ui-events`, assinante do tópico);
+- quantas mensagens estão na fila principal e na DLQ;
+- o antes e depois da mídia e o registro do DynamoDB.
+
+Dá para enviar pela API Gateway ou direto no S3 (o trigger alternativo), escolher um arquivo ou usar a imagem de exemplo gerada na própria página. Para a demo, use JPG ou PNG de até 3 MB e MP4 curto de até 3 MB; HEIC não é suportado. A configuração da página (`config.json`, com a API key local) é gerada pelo init a cada execução.
 
 Para parar e apagar o estado local:
 
@@ -196,6 +223,17 @@ docker compose exec -T localstack awslocal sqs get-queue-attributes \
 python3 -m json.tool .localstack/sns-messages.json
 ```
 
+## Apresentação
+
+Os slides da apresentação estão em `apresentacao/index.html`, um arquivo único com as ilustrações embutidas. Para abrir, basta dar duplo clique no arquivo (Chrome ou Edge).
+
+- Setas, espaço ou clique avançam e voltam os slides.
+- `F` coloca em tela cheia.
+- `N` mostra as notas do apresentador, com o tempo sugerido de cada slide.
+- `Ctrl+P` (ou `Cmd+P` no Mac) gera um PDF com um slide por página.
+
+As fontes vêm do Google Fonts; sem internet, o texto usa fontes do sistema. O visual é baseado no modelo "Isometric Clouds Infographics", da Slidesgo.
+
 ## Estrutura de arquivos
 
 ```
@@ -215,6 +253,10 @@ python3 -m json.tool .localstack/sns-messages.json
 │   └── test-regression.sh           # testes de regressão (quedas e internet lenta)
 ├── tests/
 │   └── test_regressao.py
+├── interface/
+│   └── index.html                   # demo ao vivo, publicada no bucket media-ui
+├── apresentacao/
+│   └── index.html                   # slides da apresentação
 ├── build/                           # gerado (zips, configs temporárias)
 └── .localstack/                     # gerado (API key, env, notificações do teste)
 ```

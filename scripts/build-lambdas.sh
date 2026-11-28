@@ -12,9 +12,10 @@ DEPS="$BUILD/.deps"
 find "$BUILD" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
 mkdir -p "$DEPS"
 
-echo "[build] Instalando dependências (boto3, Pillow) para python3.11..."
+echo "[build] Instalando dependências (boto3, Pillow) para python3.11 em Linux x86_64..."
 if python3 -m pip install --quiet --disable-pip-version-check \
-    --python-version 3.11 --only-binary=:all: --target "$DEPS" \
+    --python-version 3.11 --implementation cp --platform manylinux2014_x86_64 \
+    --only-binary=:all: --target "$DEPS" \
     boto3 Pillow 2>"$BUILD/pip-error.log"; then
   echo "[build] Dependências instaladas em $DEPS"
 else
