@@ -1,0 +1,949 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcodificação ao vivo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans+Extra+Condensed:wght@500;600;700&family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --a1: #0608B2;
+  --a2: #023FA1;
+  --a3: #0077B6;
+  --a4: #00B4D8;
+  --a5: #6CDCF1;
+  --a6: #AAE4F0;
+  --teal: #1393A3;
+  --ink: #15171C;
+  --muted: #5B6F80;
+  --line: #DCE6EE;
+  --bg: #F3F7FA;
+  --ok: #12A26B;
+  --err: #D64545;
+  --warn: #B7791F;
+  --head: "Fira Sans Extra Condensed", "Arial Narrow", sans-serif;
+  --body: "Roboto", "Helvetica Neue", Arial, sans-serif;
+  --mono: "Roboto Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; }
+
+header { display: flex; align-items: center; gap: 18px; padding: 10px 28px; background: #FFFFFF; border-bottom: 1px solid var(--line); }
+header h1 { margin: 0; font: 700 30px/1 var(--head); color: var(--a2); }
+header .sub { color: var(--muted); font-size: 15px; }
+.health { margin-left: auto; display: flex; align-items: center; gap: 8px; font-weight: 500; color: var(--muted); }
+.health i { width: 12px; height: 12px; border-radius: 50%; background: #B9C7D2; }
+.health.on i { background: var(--ok); box-shadow: 0 0 0 4px rgba(18, 162, 107, .15); }
+.health.off i { background: var(--err); }
+
+main { display: grid; grid-template-columns: 340px minmax(0, 1fr) 360px; gap: 18px; padding: 12px 28px 6px; align-items: start; }
+.col { display: grid; gap: 18px; min-width: 0; }
+.card { background: #FFFFFF; border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; min-width: 0; }
+.card h2 { margin: 0 0 12px; font: 600 22px/1.1 var(--head); color: var(--ink); }
+.cardhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.cardhead h2 { margin: 0; }
+
+.drop { display: grid; place-items: center; min-height: 170px; border: 2px dashed var(--a6); border-radius: 12px; background: #F7FCFE; text-align: center; padding: 12px; cursor: pointer; color: var(--muted); transition: border-color .2s, background .2s; position: relative; overflow: hidden; }
+.drop:hover, .drop.over { border-color: var(--a4); background: #EEF9FC; }
+.drop input { display: none; }
+.drop img, .drop video { max-width: 100%; max-height: 190px; border-radius: 8px; display: block; }
+.drop .nome { margin-top: 8px; font-size: 13px; color: var(--ink); word-break: break-all; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; background: #EAF1F6; border-radius: 10px; padding: 4px; margin: 14px 0 12px; }
+.seg button { border: 0; background: transparent; padding: 8px 6px; border-radius: 8px; cursor: pointer; color: var(--muted); font-weight: 500; }
+.seg button.on { background: #FFFFFF; color: var(--a2); box-shadow: 0 1px 3px rgba(2, 63, 161, .15); }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.fields label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.fields input { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.primary { width: 100%; border: 0; border-radius: 10px; padding: 12px; background: var(--a2); color: #FFFFFF; font: 600 20px var(--head); letter-spacing: .02em; cursor: pointer; }
+.primary:disabled { background: #B9C7D2; cursor: not-allowed; }
+.ghost { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px; background: #FFFFFF; color: var(--a3); cursor: pointer; margin-top: 8px; font-weight: 500; }
+.hint { margin: 10px 0 0; font-size: 13px; color: var(--muted); min-height: 18px; }
+.hint.warn { color: var(--warn); }
+.hint.err { color: var(--err); }
+
+#lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 320px; overflow: auto; }
+#lista li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; }
+#lista li:hover { background: #F4F9FC; }
+#lista li.sel { border-color: var(--a6); background: #F0F9FC; }
+#lista .th { width: 44px; height: 44px; border-radius: 8px; background: #E6F2F7 center/cover no-repeat; display: grid; place-items: center; color: var(--a3); font: 600 12px var(--head); }
+#lista .nm { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#lista .mt { font-size: 12px; color: var(--muted); }
+.vazio { color: var(--muted); font-size: 13px; }
+
+.chip { display: inline-block; padding: 2px 9px; border-radius: 99px; font: 600 13px/1.5 var(--head); letter-spacing: .03em; background: #E6EEF4; color: var(--muted); white-space: nowrap; }
+.chip.PENDING { background: #FFF4DE; color: #9A6700; }
+.chip.PROCESSING { background: #E1F4FA; color: var(--a3); }
+.chip.COMPLETED { background: #DDF5EA; color: #0B7A50; }
+.chip.FAILED { background: #FDE5E5; color: var(--err); }
+.chip.ENVIANDO { background: #E8ECFB; color: var(--a1); }
+
+#cron { font: 600 28px var(--head); color: var(--a2); }
+#diagrama { width: 100%; height: auto; display: block; }
+.node .disc { fill: #FFFFFF; stroke: #C9D6E0; stroke-width: 2.5; transition: fill .35s, stroke .35s; }
+.node .ic { color: #9AB0C0; transition: color .35s; }
+.node .ic use { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.node .ring { fill: none; stroke: var(--c); stroke-width: 3; opacity: 0; transform-box: fill-box; transform-origin: center; }
+.node .lb { font: 600 17px var(--head); fill: #8094A4; text-anchor: middle; transition: fill .35s; }
+.node .sb { font: 400 12px var(--body); fill: #9DB0BF; text-anchor: middle; }
+.node .ok { opacity: 0; transition: opacity .3s; }
+.node.active .disc, .node.done .disc { fill: var(--c); stroke: var(--c); }
+.node.active .ic, .node.done .ic, .node.err .ic { color: #FFFFFF; }
+.node.active .lb, .node.done .lb { fill: var(--ink); }
+.node.active .ring { animation: pulso 1.1s ease-out infinite; }
+.node.done .ok { opacity: 1; }
+.node.err .disc { fill: var(--err); stroke: var(--err); }
+.node.err .lb { fill: var(--err); }
+@keyframes pulso { 0% { transform: scale(1); opacity: .8; } 100% { transform: scale(1.7); opacity: 0; } }
+.edge { stroke: #D6E1EA; stroke-width: 3; fill: none; transition: stroke .3s; }
+.edge.flow { stroke: var(--a4); stroke-dasharray: 10 8; animation: fluxo .55s linear infinite; }
+.edge.done { stroke: var(--a3); }
+.edge.err { stroke: var(--err); }
+.edge.ping { stroke: var(--a5); stroke-dasharray: 6 6; animation: fluxo .4s linear infinite; }
+@keyframes fluxo { to { stroke-dashoffset: -18; } }
+.dbst { font: 600 14px var(--head); letter-spacing: .03em; }
+.dbstbg { fill: #EEF3F7; }
+
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 6px 0 0; padding: 0; list-style: none; }
+.steps li { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; background: #FAFCFD; }
+.steps li b { display: block; font: 600 19px var(--head); color: #9DB0BF; }
+.steps li span { font-size: 13px; color: var(--muted); }
+.steps li.on { border-color: var(--a4); background: #EFFAFD; }
+.steps li.on b { color: var(--a3); }
+.steps li.ok { border-color: #9ADBC0; background: #F0FBF6; }
+.steps li.ok b { color: #0B7A50; }
+.steps li.bad { border-color: #F2B5B5; background: #FFF5F5; }
+.steps li.bad b { color: var(--err); }
+
+.comp { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pane { border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-width: 0; }
+.pane h3 { margin: 0 0 8px; font: 600 18px var(--head); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.media { display: grid; place-items: center; height: 180px; border-radius: 10px; background: #F4F8FB; overflow: hidden; color: var(--muted); text-align: center; padding: 8px; }
+.media img, .media video { max-width: 100%; max-height: 164px; display: block; border-radius: 6px; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 10px 0 0; font-size: 13px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; word-break: break-all; }
+.badge { font: 600 13px var(--head); padding: 2px 9px; border-radius: 99px; letter-spacing: .03em; }
+.badge.real { background: #DDF5EA; color: #0B7A50; }
+.badge.mock { background: #FFF4DE; color: #9A6700; }
+.ganho { font: 600 17px var(--head); color: #0B7A50; }
+details { margin-top: 12px; }
+summary { cursor: pointer; color: var(--a3); font-weight: 500; }
+pre { background: #0F1E33; color: #D6E7F5; border-radius: 10px; padding: 12px; font: 12.5px/1.5 var(--mono); overflow: auto; max-height: 260px; margin: 8px 0 0; }
+
+.filas { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.fila { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.fila b { display: block; font: 700 30px/1.1 var(--head); color: var(--a2); }
+.fila span { font-size: 12px; color: var(--muted); }
+.fila.dlq b { color: var(--err); }
+
+#log { list-style: none; margin: 0; padding: 0; display: grid; align-content: start; gap: 6px; max-height: calc(100vh - 400px); min-height: 300px; overflow: auto; }
+#log li { display: grid; grid-template-columns: 54px auto minmax(0, 1fr); gap: 8px; align-items: start; font-size: 13.5px; line-height: 1.35; padding: 6px 8px; border-radius: 8px; background: #FAFCFD; animation: entra .35s ease-out; }
+#log li.err { background: #FFF5F5; }
+#log li.okk { background: #F0FBF6; }
+#log .t { font: 500 12px var(--mono); color: var(--muted); padding-top: 2px; }
+#log .src { font: 600 12px/1.6 var(--head); letter-spacing: .04em; padding: 0 7px; border-radius: 6px; color: #FFFFFF; white-space: nowrap; }
+@keyframes entra { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.code { font-family: var(--mono); font-size: .9em; color: var(--a2); word-break: break-all; }
+.nota { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+
+@media (max-width: 1280px) {
+  main { grid-template-columns: 1fr; }
+  #log { max-height: 420px; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.2 3.6-7 8-7s8 2.8 8 7"/></symbol>
+    <symbol id="i-api" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7 10h7M11 7l3 3-3 3M17 14h-7M13 17l-3-3 3-3"/></symbol>
+    <symbol id="i-lambda" viewBox="0 0 24 24"><path d="M6.5 4H9c.9 0 1.5.4 1.9 1.3L17.5 20H20"/><path d="M12.4 9.6 6 20"/></symbol>
+    <symbol id="i-bucket" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="2.6"/><path d="M4 6l1.9 12.6c.3 1.4 2.9 2.4 6.1 2.4s5.8-1 6.1-2.4L20 6"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.7"/><path d="M4.5 5.5v13c0 1.5 3.4 2.7 7.5 2.7s7.5-1.2 7.5-2.7v-13"/><path d="M4.5 12c0 1.5 3.4 2.7 7.5 2.7s7.5-1.2 7.5-2.7"/></symbol>
+    <symbol id="i-queue" viewBox="0 0 24 24"><rect x="2.5" y="8" width="5" height="8" rx="1"/><rect x="9.5" y="8" width="5" height="8" rx="1"/><path d="M17 12h4.5M19 9.5l2.5 2.5-2.5 2.5"/></symbol>
+    <symbol id="i-dlq" viewBox="0 0 24 24"><path d="M3 13.5 6 5h12l3 8.5V19H3z"/><path d="M3 13.5h5l1.5 3h5l1.5-3h5"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.8 1.8H4.2z"/><path d="M10 21a2 2 0 0 0 4 0"/></symbol>
+  </defs>
+</svg>
+
+<header>
+  <h1>Transcodificação ao vivo</h1>
+  <span class="sub">API Gateway · Lambda · S3 · SQS · SNS · DynamoDB, rodando no LocalStack</span>
+  <span class="health" id="health"><i></i><span>verificando a API…</span></span>
+</header>
+
+<main>
+  <div class="col">
+    <section class="card">
+      <h2>Enviar mídia</h2>
+      <label class="drop" id="drop">
+        <input type="file" id="arquivo" accept="image/*,video/*">
+        <div id="previa">Arraste uma imagem ou um vídeo<br>ou clique para escolher</div>
+      </label>
+      <div class="seg" id="modos">
+        <button type="button" data-modo="api" class="on">Pela API Gateway</button>
+        <button type="button" data-modo="s3">Direto no S3</button>
+      </div>
+      <div class="fields">
+        <label>Remetente<input id="remetente" value="apresentacao"></label>
+        <label>Usuário<input id="usuario" value="turma-cn"></label>
+      </div>
+      <button type="button" class="primary" id="enviar" disabled>Enviar</button>
+      <button type="button" class="ghost" id="exemplo">Usar imagem de exemplo</button>
+      <p class="hint" id="aviso"></p>
+    </section>
+    <section class="card">
+      <h2>Histórico</h2>
+      <ul id="lista"><li class="vazio">Nenhum envio ainda.</li></ul>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="card">
+      <div class="cardhead"><h2>O caminho da mídia pela AWS</h2><span id="cron">0,0 s</span></div>
+      <svg id="diagrama" viewBox="0 0 940 390" role="img" aria-label="Diagrama do fluxo"></svg>
+      <ol class="steps" id="steps">
+        <li data-s="ENVIO"><b>Envio</b><span>aguardando</span></li>
+        <li data-s="PENDING"><b>PENDING</b><span>aguardando</span></li>
+        <li data-s="PROCESSING"><b>PROCESSING</b><span>aguardando</span></li>
+        <li data-s="FIM"><b>COMPLETED</b><span>aguardando</span></li>
+      </ol>
+    </section>
+    <section class="card">
+      <div class="comp">
+        <div class="pane">
+          <h3>Antes <span class="chip">original</span></h3>
+          <div class="media" id="antes">O arquivo enviado aparece aqui.</div>
+          <dl class="facts" id="fatosAntes"></dl>
+        </div>
+        <div class="pane">
+          <h3>Depois <span id="modoBadge"></span></h3>
+          <div class="media" id="depois">O resultado sai do bucket processed.</div>
+          <dl class="facts" id="fatosDepois"></dl>
+        </div>
+      </div>
+      <details id="registroBox">
+        <summary>Registro no DynamoDB (resposta do GET /media/{id})</summary>
+        <pre id="registro">Sem registro ainda.</pre>
+      </details>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="card">
+      <h2>Filas SQS agora</h2>
+      <div class="filas">
+        <div class="fila"><b id="qVis">–</b><span>na fila</span></div>
+        <div class="fila"><b id="qInv">–</b><span>em processamento</span></div>
+        <div class="fila dlq"><b id="qDlq">–</b><span>na DLQ</span></div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="cardhead"><h2>Eventos ao vivo</h2><span class="chip" id="logCount">0</span></div>
+      <ol id="log"></ol>
+      <p class="nota">Cada etapa fica visível por meio segundo no diagrama; os tempos do log são os reais.</p>
+    </section>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (s) { return document.querySelector(s); };
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  var PASSO = 450;
+  var INTERVALO = 800;
+
+  var NODES = {
+    nav: { x: 60, y: 195, lb: 'Navegador', sb: 'você', ic: 'i-user', c: '#435D74', top: false },
+    api: { x: 200, y: 195, lb: 'API Gateway', sb: 'API key', ic: 'i-api', c: '#0608B2', top: false },
+    up: { x: 350, y: 88, lb: 'upload-handler', sb: 'Lambda', ic: 'i-lambda', c: '#023FA1', top: true },
+    st: { x: 350, y: 300, lb: 'status-handler', sb: 'Lambda', ic: 'i-lambda', c: '#023FA1', top: false },
+    raw: { x: 510, y: 88, lb: 'S3 raw', sb: 'original', ic: 'i-bucket', c: '#0077B6', top: true },
+    sqs: { x: 510, y: 195, lb: 'SQS', sb: 'fila', ic: 'i-queue', c: '#00B4D8', top: false },
+    db: { x: 510, y: 300, lb: 'DynamoDB', sb: 'MediaMetadata', ic: 'i-db', c: '#1393A3', top: false },
+    wk: { x: 690, y: 195, lb: 'transcode-worker', sb: 'Lambda', ic: 'i-lambda', c: '#023FA1', top: false },
+    dlq: { x: 690, y: 88, lb: 'DLQ', sb: '3 falhas', ic: 'i-dlq', c: '#00B4D8', top: true },
+    out: { x: 870, y: 88, lb: 'S3 processed', sb: 'resultado', ic: 'i-bucket', c: '#0077B6', top: true },
+    sns: { x: 870, y: 300, lb: 'SNS', sb: 'avisos', ic: 'i-bell', c: '#36C8D9', top: false }
+  };
+  var EDGES = [
+    ['nav', 'api'], ['api', 'up'], ['api', 'st'], ['up', 'raw'], ['up', 'sqs'], ['up', 'db', 'curva'],
+    ['raw', 'sqs'], ['sqs', 'wk'], ['sqs', 'dlq'], ['wk', 'out'], ['wk', 'db'], ['wk', 'sns'], ['st', 'db']
+  ];
+  var CORES_SRC = { Navegador: '#435D74', API: '#0608B2', Lambda: '#023FA1', S3: '#0077B6', SQS: '#00A3C4', DynamoDB: '#1393A3', SNS: '#2BB3C7', Erro: '#D64545' };
+
+  var cfg = null;
+  var runs = [];
+  var atual = null;
+  var modo = 'api';
+  var arquivo = null;
+  var cronTimer = null;
+
+  function montarDiagrama() {
+    var R = 30;
+    var s = '';
+    EDGES.forEach(function (e) {
+      var a = NODES[e[0]], b = NODES[e[1]];
+      var id = 'e-' + e[0] + '-' + e[1];
+      if (e[2] === 'curva') {
+        s += '<path id="' + id + '" class="edge" d="M' + (a.x + 18) + ' ' + (a.y + 26) + ' Q 395 300 ' + (b.x - 36) + ' ' + (b.y - 6) + '" marker-end="url(#seta)"/>';
+        return;
+      }
+      var dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx * dx + dy * dy);
+      var ux = dx / len, uy = dy / len;
+      s += '<line id="' + id + '" class="edge" x1="' + (a.x + ux * (R + 4)).toFixed(1) + '" y1="' + (a.y + uy * (R + 4)).toFixed(1) +
+        '" x2="' + (b.x - ux * (R + 9)).toFixed(1) + '" y2="' + (b.y - uy * (R + 9)).toFixed(1) + '" marker-end="url(#seta)"/>';
+    });
+    Object.keys(NODES).forEach(function (k) {
+      var n = NODES[k];
+      var ly = n.top ? n.y - 54 : n.y + 52;
+      var sy = n.top ? n.y - 38 : n.y + 68;
+      s += '<g id="n-' + k + '" class="node idle" style="--c:' + n.c + '">' +
+        '<circle class="ring" cx="' + n.x + '" cy="' + n.y + '" r="' + R + '"/>' +
+        '<circle class="disc" cx="' + n.x + '" cy="' + n.y + '" r="' + R + '"/>' +
+        '<svg class="ic" x="' + (n.x - 17) + '" y="' + (n.y - 17) + '" width="34" height="34"><use href="#' + n.ic + '"/></svg>' +
+        '<text class="lb" x="' + n.x + '" y="' + ly + '">' + n.lb + '</text>' +
+        '<text class="sb" x="' + n.x + '" y="' + sy + '">' + n.sb + '</text>' +
+        '<g class="ok" transform="translate(' + (n.x + 22) + ' ' + (n.y - 22) + ')"><circle r="10" fill="#12A26B" stroke="#FFFFFF" stroke-width="2"/>' +
+        '<path d="M-4.5 0.5 l3 3 l6 -6.5" stroke="#FFFFFF" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>' +
+        '</g>';
+    });
+    s += '<g id="dbStatus" transform="translate(550 288)" style="display:none"><rect class="dbstbg" width="118" height="26" rx="13"/><text class="dbst" x="59" y="18" text-anchor="middle"></text></g>';
+    s += '<g id="dlqBadge" style="display:none"><circle cx="716" cy="64" r="12" fill="#D64545"/><text x="716" y="69" text-anchor="middle" fill="#FFFFFF" style="font:600 14px var(--head)"></text></g>';
+    s = '<defs><marker id="seta" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 10 5 0 10z" fill="#A9BCCB"/></marker></defs>' + s;
+    $('#diagrama').innerHTML = s;
+  }
+
+  function agora() { return performance.now(); }
+  function seg(run, t) { return '+' + (((t || agora()) - run.t0) / 1000).toFixed(1).replace('.', ',') + 's'; }
+  function fmtTam(b) {
+    if (b == null || isNaN(b)) return '–';
+    if (b >= 1048576) return (b / 1048576).toFixed(2).replace('.', ',') + ' MB';
+    return Math.max(1, Math.round(b / 1024)) + ' KB';
+  }
+  function fmtS(ms) { return (ms / 1000).toFixed(1).replace('.', ',') + ' s'; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function nomeSeguro(n) { return (n.split(/[\\/]/).pop().replace(/[^A-Za-z0-9._-]/g, '_').replace(/^[._]+|[._]+$/g, '') || 'upload.bin').slice(0, 120); }
+  function ascii(s) { return String(s || '').normalize('NFD').replace(/[^\x20-\x7E]/g, '').slice(0, 100) || 'desconhecido'; }
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) { var r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
+  }
+
+  function log(run, src, txt, tipo, t) {
+    var tt = t || run.tEvento || agora();
+    if (run.ultimoT && tt < run.ultimoT) tt = run.ultimoT;
+    run.ultimoT = tt;
+    run.log.push({ t: seg(run, tt), src: src, txt: txt, tipo: tipo || '' });
+    if (run === atual) renderLog();
+  }
+
+  function anim(run, fn) {
+    run.fila.push({ fn: fn, t: agora() });
+    if (run.drenando) return;
+    run.drenando = true;
+    (async function () {
+      while (run.fila.length) {
+        var item = run.fila.shift();
+        run.tEvento = item.t;
+        try { item.fn(); } catch (e) { console.error(e); }
+        run.tEvento = null;
+        if (run === atual) render();
+        await sleep(PASSO);
+      }
+      run.drenando = false;
+    })();
+  }
+
+  function passoSns(run, st) {
+    if (run.snsLog[st] || run.sns[st] == null) return;
+    run.snsLog[st] = true;
+    var t = run.sns[st];
+    anim(run, function () {
+      setE(run, 'wk-sns', 'flow'); setN(run, 'sns', 'active');
+      log(run, 'SNS', 'Notificação publicada: <b>' + esc(st) + '</b>', st === 'FAILED' ? 'err' : '', t);
+    });
+    anim(run, function () { setE(run, 'wk-sns', 'done'); setN(run, 'sns', 'done'); });
+  }
+
+  function setN(run, k, v) { run.nodes[k] = v; }
+  function setE(run, k, v) { run.edges[k] = v; }
+
+  function render() {
+    var run = atual;
+    Object.keys(NODES).forEach(function (k) {
+      var g = document.getElementById('n-' + k);
+      g.setAttribute('class', 'node ' + ((run && run.nodes[k]) || 'idle'));
+    });
+    EDGES.forEach(function (e) {
+      var id = e[0] + '-' + e[1];
+      document.getElementById('e-' + id).setAttribute('class', 'edge ' + ((run && run.edges[id]) || ''));
+    });
+    var dbs = $('#dbStatus');
+    if (run && run.dbStatus) {
+      dbs.style.display = '';
+      var cores = { PENDING: ['#FFF4DE', '#9A6700'], PROCESSING: ['#E1F4FA', '#0077B6'], COMPLETED: ['#DDF5EA', '#0B7A50'], FAILED: ['#FDE5E5', '#D64545'] }[run.dbStatus] || ['#EEF3F7', '#5B6F80'];
+      dbs.querySelector('rect').setAttribute('fill', cores[0]);
+      var tx = dbs.querySelector('text');
+      tx.textContent = run.dbStatus;
+      tx.setAttribute('fill', cores[1]);
+    } else {
+      dbs.style.display = 'none';
+    }
+    renderSteps();
+    renderLog();
+    renderResultado();
+    renderLista();
+  }
+
+  function renderSteps() {
+    var run = atual;
+    var lis = document.querySelectorAll('#steps li');
+    lis.forEach(function (li) { li.className = ''; li.querySelector('span').textContent = 'aguardando'; });
+    var fim = lis[3];
+    fim.querySelector('b').textContent = 'COMPLETED';
+    if (!run) return;
+    var m = run.marcos;
+    function marca(i, cls, txt) { lis[i].className = cls; lis[i].querySelector('span').textContent = txt; }
+    if (m.envio != null) marca(0, 'ok', (run.modo === 'api' ? 'API respondeu 202 em ' : 'PUT no S3 em ') + Math.round(m.envio) + ' ms');
+    else marca(0, 'on', run.modo === 'api' ? 'POST /media em andamento' : 'PUT no bucket raw');
+    if (m.pending != null) marca(1, m.processing != null || m.fim != null ? 'ok' : 'on', 'na fila em ' + fmtS(m.pending));
+    else if (run.modo === 's3' && m.processing != null) marca(1, 'ok', 'registro criado pelo worker');
+    else if (run.modo === 's3' && m.envio != null) marca(1, 'on', 'aguardando o worker criar o registro');
+    if (m.processing != null) marca(2, m.fim != null ? 'ok' : 'on', 'worker começou em ' + fmtS(m.processing));
+    if (run.falhou && m.fim == null) { lis[2].className = 'bad'; lis[2].querySelector('span').textContent = 'falhou, a fila vai tentar de novo'; }
+    if (m.fim != null) marca(3, 'ok', 'pronto em ' + fmtS(m.fim));
+    if (run.erroEnvio) { lis[0].className = 'bad'; lis[0].querySelector('span').textContent = run.erroEnvio; }
+  }
+
+  function renderLog() {
+    var ol = $('#log');
+    var run = atual;
+    var itens = run ? run.log : [];
+    if (ol.childElementCount === itens.length && ol.dataset.run === (run ? run.id : '')) return;
+    if (ol.dataset.run !== (run ? run.id : '')) ol.innerHTML = '';
+    ol.dataset.run = run ? run.id : '';
+    for (var i = ol.childElementCount; i < itens.length; i++) {
+      var it = itens[i];
+      var li = document.createElement('li');
+      if (it.tipo) li.className = it.tipo;
+      li.innerHTML = '<span class="t">' + it.t + '</span><span class="src" style="background:' + (CORES_SRC[it.src] || '#5B6F80') + '">' + it.src + '</span><span>' + it.txt + '</span>';
+      ol.appendChild(li);
+    }
+    ol.scrollTop = ol.scrollHeight;
+    $('#logCount').textContent = itens.length;
+  }
+
+  function fato(dl, pares) {
+    dl.innerHTML = pares.filter(function (p) { return p[1] != null && p[1] !== ''; }).map(function (p) { return '<dt>' + p[0] + '</dt><dd>' + p[1] + '</dd>'; }).join('');
+  }
+
+  function renderResultado() {
+    var run = atual;
+    var antes = $('#antes'), depois = $('#depois');
+    if (!run) return;
+    if (antes.dataset.run !== run.id) {
+      antes.dataset.run = run.id;
+      antes.innerHTML = run.tipo.indexOf('video/') === 0
+        ? '<video src="' + run.previa + '" controls muted playsinline></video>'
+        : '<img src="' + run.previa + '" alt="Original">';
+      var im = antes.querySelector('img');
+      if (im) im.onload = function () { run.dimAntes = im.naturalWidth + ' × ' + im.naturalHeight + ' px'; if (run === atual) renderResultado(); };
+    }
+    fato($('#fatosAntes'), [['Arquivo', esc(run.nome)], ['Tipo', esc(run.tipo || 'desconhecido')], ['Tamanho', fmtTam(run.tamanho)], ['Dimensões', run.dimAntes]]);
+
+    var rec = run.registro;
+    $('#registro').textContent = rec ? JSON.stringify(rec, null, 2) : 'Sem registro ainda.';
+    var badge = $('#modoBadge');
+    if (!rec || rec.status !== 'COMPLETED') {
+      badge.innerHTML = rec ? '<span class="chip ' + rec.status + '">' + rec.status + '</span>' : '';
+      if (depois.dataset.run !== run.id + ':espera') {
+        depois.dataset.run = run.id + ':espera';
+        depois.innerHTML = run.falhou ? 'A conversão falhou; a fila vai tentar de novo.' : 'Aguardando o transcode-worker…';
+      }
+      fato($('#fatosDepois'), []);
+      return;
+    }
+    var modoT = rec.transcode_mode || '';
+    var real = modoT.indexOf('mock') !== 0;
+    badge.innerHTML = real ? '<span class="badge real">conversão real · ' + esc(modoT) + '</span>' : '<span class="badge mock">conversão simulada</span>';
+    var chave = run.id + ':ok:' + rec.s3_url;
+    if (depois.dataset.run !== chave) {
+      depois.dataset.run = chave;
+      if (real && (rec.content_type_out || '').indexOf('image/') === 0) {
+        depois.innerHTML = '<img src="' + esc(rec.s3_url) + '" alt="Resultado">';
+        var im2 = depois.querySelector('img');
+        im2.onload = function () { run.dimDepois = im2.naturalWidth + ' × ' + im2.naturalHeight + ' px'; if (run === atual) renderResultado(); };
+      } else if (real && (rec.content_type_out || '').indexOf('video/') === 0) {
+        depois.innerHTML = '<video src="' + esc(rec.s3_url) + '" controls muted playsinline></video>';
+      } else {
+        depois.innerHTML = '<div><b style="font:600 20px var(--head);color:#9A6700">Conversão simulada</b><br><span style="font-size:13px">' +
+          (modoT.indexOf('ffmpeg') >= 0 ? 'A Lambda não tem FFmpeg: o vídeo passou pelo fluxo inteiro, mas o arquivo final não foi convertido.' : 'A biblioteca de conversão não estava disponível na Lambda.') +
+          '</span><br><a href="' + esc(rec.s3_url) + '" target="_blank" rel="noopener" style="font-size:13px">baixar o arquivo do bucket</a></div>';
+      }
+    }
+    var ganho = '';
+    if (real && run.tamanho && rec.output_size) {
+      var p = Math.round((1 - rec.output_size / run.tamanho) * 100);
+      ganho = p > 0 ? '<span class="ganho">' + p + '% menor</span>' : (p < 0 ? (-p) + '% maior' : 'mesmo tamanho');
+    }
+    fato($('#fatosDepois'), [
+      ['Tipo', esc(rec.content_type_out || '')],
+      ['Tamanho', fmtTam(rec.output_size) + (ganho ? ' · ' + ganho : '')],
+      ['Dimensões', run.dimDepois],
+      ['Chave S3', '<span class="code">' + esc(rec.output_key || '') + '</span>']
+    ]);
+  }
+
+  function renderLista() {
+    var ul = $('#lista');
+    if (!runs.length) { ul.innerHTML = '<li class="vazio">Nenhum envio ainda.</li>'; return; }
+    ul.innerHTML = '';
+    runs.slice().reverse().forEach(function (run) {
+      var li = document.createElement('li');
+      if (run === atual) li.className = 'sel';
+      var st = run.erroEnvio ? 'FAILED' : (run.registro ? run.registro.status : 'ENVIANDO');
+      var thumb = run.tipo.indexOf('image/') === 0 ? 'style="background-image:url(\'' + run.previa + '\')"' : '';
+      li.innerHTML = '<div class="th" ' + thumb + '>' + (thumb ? '' : 'VÍDEO') + '</div>' +
+        '<div><div class="nm">' + esc(run.nome) + '</div><div class="mt">' + (run.modo === 'api' ? 'API Gateway' : 'direto no S3') +
+        (run.marcos.fim != null ? ' · ' + fmtS(run.marcos.fim) : '') + '</div></div>' +
+        '<span class="chip ' + st + '">' + st + '</span>';
+      li.onclick = function () { atual = run; render(); };
+      ul.appendChild(li);
+    });
+  }
+
+  function cron() {
+    if (cronTimer) clearInterval(cronTimer);
+    cronTimer = setInterval(function () {
+      var run = atual;
+      if (!run) return;
+      var ms;
+      if (run.marcos.fim != null) ms = run.marcos.fim;
+      else if (run.drenando && run.ultimoT) ms = run.ultimoT - run.t0;
+      else ms = agora() - run.t0;
+      $('#cron').textContent = fmtS(ms);
+    }, 100);
+  }
+
+  function ping() {
+    ['e-api-st', 'e-st-db'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var antes = el.getAttribute('class');
+      if (antes.indexOf('flow') >= 0 || antes.indexOf('done') >= 0) return;
+      el.setAttribute('class', 'edge ping');
+      setTimeout(function () { if (el.getAttribute('class') === 'edge ping') el.setAttribute('class', antes); }, 420);
+    });
+  }
+
+  async function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ 'x-api-key': cfg.apiKey }, opts.headers || {});
+    var r = await fetch(cfg.apiBase + path, opts);
+    var txt = await r.text();
+    var corpo = null;
+    try { corpo = txt ? JSON.parse(txt) : null; } catch (e) { corpo = { bruto: txt }; }
+    return { status: r.status, corpo: corpo };
+  }
+
+  async function sqs(acao, corpo) {
+    var r = await fetch('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-amz-json-1.0', 'X-Amz-Target': 'AmazonSQS.' + acao },
+      body: JSON.stringify(corpo)
+    });
+    if (!r.ok) throw new Error(acao + ' HTTP ' + r.status);
+    var txt = await r.text();
+    return txt ? JSON.parse(txt) : {};
+  }
+
+  function paraBase64(file) {
+    return new Promise(function (ok, erro) {
+      var leitor = new FileReader();
+      leitor.onload = function () { ok(String(leitor.result).split(',')[1] || ''); };
+      leitor.onerror = function () { erro(leitor.error); };
+      leitor.readAsDataURL(file);
+    });
+  }
+
+  function novaRun(file) {
+    return {
+      id: uuid(), mediaId: null, nome: file.name, tipo: file.type || 'application/octet-stream', tamanho: file.size,
+      modo: modo, previa: URL.createObjectURL(file), t0: agora(), nodes: {}, edges: {}, log: [], fila: [], drenando: false,
+      marcos: {}, registro: null, dbStatus: null, visto: {}, falhou: false, final: false, erroEnvio: null,
+      sns: {}, snsLog: {}, tEvento: null
+    };
+  }
+
+  async function enviar() {
+    if (!arquivo || !cfg) return;
+    var file = arquivo;
+    var run = novaRun(file);
+    runs.push(run);
+    atual = run;
+    $('#antes').dataset.run = '';
+    $('#depois').dataset.run = '';
+    render();
+    cron();
+    var remetente = $('#remetente').value.trim() || 'apresentacao';
+    var usuario = $('#usuario').value.trim() || 'turma-cn';
+
+    if (run.modo === 'api') {
+      anim(run, function () {
+        setN(run, 'nav', 'active'); setE(run, 'nav-api', 'flow'); setN(run, 'api', 'active');
+        log(run, 'Navegador', 'Lendo <b>' + esc(file.name) + '</b> (' + fmtTam(file.size) + ') e enviando <span class="code">POST /media</span> com a API key');
+      });
+      var corpo;
+      try {
+        corpo = await paraBase64(file);
+      } catch (e) {
+        run.erroEnvio = 'não consegui ler o arquivo';
+        anim(run, function () { setN(run, 'nav', 'err'); log(run, 'Erro', 'Não consegui ler o arquivo: ' + esc(e.message || e), 'err'); });
+        return;
+      }
+      anim(run, function () { setE(run, 'api-up', 'flow'); setN(run, 'up', 'active'); log(run, 'API', 'API Gateway validou a API key e chamou a Lambda <b>upload-handler</b>'); });
+      var t1 = agora();
+      var resp;
+      try {
+        resp = await api('/media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_name: file.name, sender: remetente, user_id: usuario, content_type: file.type || undefined, content_base64: corpo })
+        });
+      } catch (e) {
+        run.erroEnvio = 'sem resposta da API';
+        anim(run, function () { setN(run, 'api', 'err'); setE(run, 'nav-api', 'err'); log(run, 'Erro', 'A API não respondeu: ' + esc(e.message || e), 'err'); });
+        return;
+      }
+      var tResp = agora();
+      if (resp.status !== 202 || !resp.corpo || !resp.corpo.media_id) {
+        run.erroEnvio = 'API respondeu ' + resp.status;
+        anim(run, function () {
+          setN(run, 'up', 'err'); setE(run, 'api-up', 'err');
+          log(run, 'Erro', 'API respondeu <b>' + resp.status + '</b>: ' + esc((resp.corpo && (resp.corpo.error || resp.corpo.message || resp.corpo.bruto)) || 'sem detalhe'), 'err', tResp);
+        });
+        return;
+      }
+      run.mediaId = resp.corpo.media_id;
+      var msEnvio = tResp - t1;
+      anim(run, function () {
+        setE(run, 'up-raw', 'flow'); setN(run, 'raw', 'active');
+        log(run, 'S3', 'Original gravado no bucket raw: <span class="code">' + esc(resp.corpo.key) + '</span>', '', tResp);
+      });
+      anim(run, function () {
+        setE(run, 'up-raw', 'done'); setN(run, 'raw', 'done');
+        setE(run, 'up-db', 'flow'); setN(run, 'db', 'active'); run.dbStatus = 'PENDING';
+        log(run, 'DynamoDB', 'Registro criado com status <b>PENDING</b> (media_id <span class="code">' + esc(run.mediaId.slice(0, 8)) + '…</span>)', '', tResp);
+      });
+      anim(run, function () {
+        setE(run, 'up-db', 'done'); setN(run, 'db', 'done');
+        setE(run, 'up-sqs', 'flow'); setN(run, 'sqs', 'active');
+        log(run, 'SQS', 'Job enviado para a fila <span class="code">media-transcode-queue</span>', '', tResp);
+      });
+      anim(run, function () {
+        setE(run, 'up-sqs', 'done'); setN(run, 'up', 'done'); setE(run, 'api-up', 'done'); setN(run, 'api', 'done'); setE(run, 'nav-api', 'done'); setN(run, 'nav', 'done');
+        setE(run, 'raw-sqs', 'flow');
+        run.marcos.envio = msEnvio;
+        run.marcos.pending = tResp - run.t0;
+        log(run, 'API', 'Resposta <b>202 Accepted</b> em ' + Math.round(msEnvio) + ' ms: o cliente não espera a conversão', 'okk', tResp);
+        log(run, 'S3', 'O bucket também avisou a fila (evento ObjectCreated); o worker descarta a duplicata', '', tResp);
+      });
+      anim(run, function () { setE(run, 'raw-sqs', 'done'); });
+    } else {
+      run.mediaId = uuid();
+      var chave = 'raw/direct/' + run.mediaId + '/' + nomeSeguro(file.name);
+      anim(run, function () {
+        setN(run, 'nav', 'active'); setN(run, 'raw', 'active');
+        log(run, 'Navegador', 'Enviando <b>' + esc(file.name) + '</b> (' + fmtTam(file.size) + ') direto para o bucket raw, sem passar pela API');
+      });
+      var t2 = agora();
+      var r;
+      try {
+        r = await fetch('/' + cfg.rawBucket + '/' + chave, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'x-amz-meta-media-id': run.mediaId,
+            'x-amz-meta-sender': ascii(remetente),
+            'x-amz-meta-user-id': ascii(usuario),
+            'x-amz-meta-original-name': nomeSeguro(file.name),
+            'x-amz-meta-timestamp': new Date().toISOString().replace(/\.\d+Z$/, '+00:00')
+          },
+          body: file
+        });
+      } catch (e) {
+        r = { ok: false, status: 0 };
+      }
+      var tPut = agora();
+      if (!r.ok) {
+        run.erroEnvio = 'PUT no S3 falhou (' + r.status + ')';
+        anim(run, function () { setN(run, 'raw', 'err'); log(run, 'Erro', 'O S3 recusou o upload (HTTP ' + r.status + ')', 'err', tPut); });
+        return;
+      }
+      anim(run, function () {
+        run.marcos.envio = tPut - t2;
+        setN(run, 'nav', 'done'); setN(run, 'raw', 'done');
+        log(run, 'S3', 'Objeto gravado em <span class="code">' + esc(chave) + '</span>', 'okk', tPut);
+      });
+      anim(run, function () {
+        setE(run, 'raw-sqs', 'flow'); setN(run, 'sqs', 'active');
+        log(run, 'SQS', 'O evento ObjectCreated do bucket colocou o job na fila', '', tPut);
+      });
+      anim(run, function () { setE(run, 'raw-sqs', 'done'); });
+    }
+    acompanhar(run);
+  }
+
+  function aoProcessar(run, rec, t) {
+    if (run.visto.PROCESSING) return;
+    run.visto.PROCESSING = true;
+    anim(run, function () {
+      if (run.marcos.processing == null) run.marcos.processing = t - run.t0;
+      if (rec && rec.status === 'PROCESSING') run.registro = rec;
+      setN(run, 'sqs', 'done'); setE(run, 'sqs-wk', 'flow'); setN(run, 'wk', 'active');
+      if (run.modo === 's3' && !run.visto.registroS3) {
+        run.visto.registroS3 = true;
+        log(run, 'Lambda', 'O <b>transcode-worker</b> leu o job e criou o registro no DynamoDB a partir dos metadados do S3', '', t);
+      } else {
+        log(run, 'Lambda', 'O <b>transcode-worker</b> pegou o job da fila', '', t);
+      }
+    });
+    anim(run, function () {
+      setE(run, 'sqs-wk', 'done'); setE(run, 'wk-db', 'flow'); setN(run, 'db', 'active'); run.dbStatus = 'PROCESSING';
+      log(run, 'DynamoDB', 'Update condicional: <b>PENDING → PROCESSING</b>' + (rec && rec.processing_started_at ? ' (' + esc(rec.processing_started_at.slice(11, 19)) + ')' : ''), '', t);
+    });
+    anim(run, function () { setE(run, 'wk-db', 'done'); setN(run, 'db', 'done'); });
+    passoSns(run, 'PROCESSING');
+  }
+
+  function aoConcluir(run, rec, t) {
+    if (run.visto.COMPLETED) return;
+    aoProcessar(run, rec, t);
+    run.visto.COMPLETED = true;
+    run.final = true;
+    var msFim = t - run.t0;
+    var real = (rec.transcode_mode || '').indexOf('mock') !== 0;
+    anim(run, function () {
+      log(run, 'Lambda', real ? 'Conversão real com <b>' + esc(rec.transcode_mode) + '</b>' : 'Conversão simulada: <span class="code">' + esc(rec.transcode_mode) + '</span>', real ? 'okk' : '', t);
+    });
+    anim(run, function () {
+      setE(run, 'wk-out', 'flow'); setN(run, 'out', 'active');
+      log(run, 'S3', 'Resultado gravado no bucket processed (' + fmtTam(rec.output_size) + '): <span class="code">' + esc(rec.output_key || '') + '</span>', '', t);
+    });
+    anim(run, function () {
+      setE(run, 'wk-out', 'done'); setN(run, 'out', 'done');
+      setE(run, 'wk-db', 'flow'); setN(run, 'db', 'active'); run.dbStatus = 'COMPLETED';
+      log(run, 'DynamoDB', 'Status <b>COMPLETED</b>, com a URL do resultado', '', t);
+    });
+    anim(run, function () { setE(run, 'wk-db', 'done'); setN(run, 'db', 'done'); setN(run, 'wk', 'done'); });
+    passoSns(run, 'COMPLETED');
+    anim(run, function () {
+      run.registro = rec;
+      run.marcos.fim = msFim;
+      log(run, 'Navegador', 'Pronto em <b>' + fmtS(msFim) + '</b> do clique até o resultado', 'okk', t);
+    });
+  }
+
+  function aoFalhar(run, rec, t) {
+    if (run.visto['FAILED:' + (rec.failed_at || '')]) return;
+    run.visto['FAILED:' + (rec.failed_at || '')] = true;
+    run.falhou = true;
+    run.visto.PROCESSING = false;
+    run.sns.PROCESSING = null;
+    run.snsLog.PROCESSING = false;
+    anim(run, function () {
+      run.registro = rec;
+      setN(run, 'wk', 'err'); setE(run, 'wk-db', 'flow'); run.dbStatus = 'FAILED';
+      log(run, 'Erro', 'Falhou: ' + esc(rec.error_message || 'sem detalhe') + '. A mensagem volta para a fila (até 3 tentativas, depois DLQ)', 'err', t);
+    });
+    anim(run, function () { setE(run, 'wk-db', 'done'); setE(run, 'sqs-wk', ''); setN(run, 'sqs', 'active'); });
+  }
+
+  async function consultar(run) {
+    if (run.final) return;
+    if (run === atual) ping();
+    var r;
+    try { r = await api('/media/' + encodeURIComponent(run.mediaId)); } catch (e) { return; }
+    var t = agora();
+    if (run.final) return;
+    if (r.status === 404) {
+      if (!run.visto.aviso404 && run.modo === 's3') {
+        run.visto.aviso404 = true;
+        anim(run, function () { log(run, 'DynamoDB', 'Ainda sem registro: quem cria é o worker quando a entrada vem pelo S3', '', t); });
+      }
+      return;
+    }
+    if (r.status !== 200 || !r.corpo) return;
+    var rec = r.corpo;
+    if (rec.status === 'PENDING' && run.marcos.pending == null) {
+      var msPend = t - run.t0;
+      anim(run, function () { if (run.marcos.pending == null) run.marcos.pending = msPend; if (!run.registro) run.registro = rec; });
+    }
+    if (rec.status === 'PROCESSING') aoProcessar(run, rec, t);
+    else if (rec.status === 'COMPLETED') aoConcluir(run, rec, t);
+    else if (rec.status === 'FAILED') aoFalhar(run, rec, t);
+    if (run === atual) { renderSteps(); renderLista(); }
+  }
+
+  async function acompanhar(run) {
+    var limite = agora() + 150000;
+    while (!run.final && agora() < limite) {
+      await sleep(INTERVALO);
+      await consultar(run);
+    }
+    if (!run.final) anim(run, function () { log(run, 'Erro', 'Passaram 150 s sem COMPLETED. Veja a DLQ e os logs do LocalStack', 'err'); });
+  }
+
+  function acharRun(mediaId) {
+    for (var i = runs.length - 1; i >= 0; i--) if (runs[i].mediaId === mediaId) return runs[i];
+    return null;
+  }
+
+  async function ouvirSns() {
+    if (!cfg || !cfg.eventsQueueUrl) return;
+    while (true) {
+      try {
+        var r = await sqs('ReceiveMessage', { QueueUrl: cfg.eventsQueueUrl, MaxNumberOfMessages: 10, WaitTimeSeconds: 1 });
+        var msgs = r.Messages || [];
+        var apagar = [];
+        for (var i = 0; i < msgs.length; i++) {
+          var m = msgs[i];
+          apagar.push({ Id: String(i), ReceiptHandle: m.ReceiptHandle });
+          var ev;
+          try { ev = JSON.parse(m.Body); if (ev && ev.Message && ev.Type) ev = JSON.parse(ev.Message); } catch (e) { continue; }
+          var run = acharRun(ev && ev.media_id);
+          if (!run || !ev.status) continue;
+          if (ev.status === 'FAILED') {
+            run.sns.FAILED = agora();
+            run.snsLog.FAILED = false;
+            passoSns(run, 'FAILED');
+            await consultar(run);
+            continue;
+          }
+          if (run.sns[ev.status] == null) run.sns[ev.status] = agora();
+          if (ev.status === 'PROCESSING' && run.visto.PROCESSING) passoSns(run, 'PROCESSING');
+          if (ev.status === 'COMPLETED' && run.visto.COMPLETED) passoSns(run, 'COMPLETED');
+          await consultar(run);
+        }
+        if (apagar.length) await sqs('DeleteMessageBatch', { QueueUrl: cfg.eventsQueueUrl, Entries: apagar });
+      } catch (e) {
+        await sleep(2000);
+      }
+    }
+  }
+
+  async function olharFilas() {
+    if (!cfg) return;
+    try {
+      var nomes = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible'];
+      var a = await sqs('GetQueueAttributes', { QueueUrl: cfg.queueUrl, AttributeNames: nomes });
+      var b = await sqs('GetQueueAttributes', { QueueUrl: cfg.dlqUrl, AttributeNames: nomes });
+      var at = a.Attributes || {}, bt = b.Attributes || {};
+      $('#qVis').textContent = at.ApproximateNumberOfMessages || '0';
+      $('#qInv').textContent = at.ApproximateNumberOfMessagesNotVisible || '0';
+      var d = (+bt.ApproximateNumberOfMessages || 0) + (+bt.ApproximateNumberOfMessagesNotVisible || 0);
+      $('#qDlq').textContent = String(d);
+      var badge = $('#dlqBadge');
+      badge.style.display = d > 0 ? '' : 'none';
+      badge.querySelector('text').textContent = d;
+    } catch (e) {
+      $('#qVis').textContent = '?';
+    }
+  }
+
+  async function verificarApi() {
+    var h = $('#health');
+    try {
+      var r = await fetch(cfg.apiBase + '/health');
+      if (!r.ok) throw new Error(r.status);
+      h.className = 'health on';
+      h.querySelector('span').textContent = 'API no ar';
+    } catch (e) {
+      h.className = 'health off';
+      h.querySelector('span').textContent = 'API fora do ar: rode o init-localstack.sh';
+    }
+  }
+
+  function escolher(file) {
+    if (!file) return;
+    arquivo = file;
+    var url = URL.createObjectURL(file);
+    var ehVideo = (file.type || '').indexOf('video/') === 0;
+    $('#previa').innerHTML = (ehVideo ? '<video src="' + url + '" muted playsinline></video>' : '<img src="' + url + '" alt="">') +
+      '<div class="nome">' + esc(file.name) + ' · ' + fmtTam(file.size) + '</div>';
+    var aviso = $('#aviso');
+    aviso.className = 'hint';
+    aviso.textContent = '';
+    if (/heic|heif/i.test(file.type + file.name)) { aviso.className = 'hint err'; aviso.textContent = 'HEIC não é suportado: exporte a foto como JPG.'; }
+    else if (modo === 'api' && file.size > 7 * 1048576) { aviso.className = 'hint err'; aviso.textContent = 'Acima de 7 MB: com o base64 passa do limite de 10 MB da API.'; }
+    else if (file.size > 3 * 1048576) { aviso.className = 'hint warn'; aviso.textContent = 'Arquivo grande: até 3 MB é o mais seguro para a demo.'; }
+    else if (ehVideo) { aviso.textContent = 'Vídeo passa pelo fluxo inteiro; a conversão é simulada (a Lambda não tem FFmpeg).'; }
+    $('#enviar').disabled = !cfg;
+  }
+
+  function exemplo() {
+    var c = document.createElement('canvas');
+    c.width = 1600; c.height = 1000;
+    var g = c.getContext('2d');
+    var grad = g.createLinearGradient(0, 0, 1600, 1000);
+    grad.addColorStop(0, '#0608B2'); grad.addColorStop(.5, '#0077B6'); grad.addColorStop(1, '#6CDCF1');
+    g.fillStyle = grad; g.fillRect(0, 0, 1600, 1000);
+    for (var i = 0; i < 90; i++) {
+      g.fillStyle = 'rgba(255,255,255,' + (Math.random() * .22).toFixed(2) + ')';
+      g.beginPath(); g.arc(Math.random() * 1600, Math.random() * 1000, 6 + Math.random() * 70, 0, 6.3); g.fill();
+    }
+    g.fillStyle = '#FFFFFF';
+    g.font = '700 112px "Fira Sans Extra Condensed", Arial';
+    g.fillText('Computação em Nuvem', 110, 470);
+    g.font = '400 52px Roboto, Arial';
+    g.fillText('Imagem de teste · ' + new Date().toLocaleTimeString('pt-BR'), 114, 565);
+    c.toBlob(function (b) { escolher(new File([b], 'exemplo-' + Date.now() + '.png', { type: 'image/png' })); }, 'image/png');
+  }
+
+  async function iniciar() {
+    montarDiagrama();
+    render();
+    var drop = $('#drop');
+    $('#arquivo').addEventListener('change', function (e) { escolher(e.target.files[0]); });
+    drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('over'); });
+    drop.addEventListener('dragleave', function () { drop.classList.remove('over'); });
+    drop.addEventListener('drop', function (e) { e.preventDefault(); drop.classList.remove('over'); escolher(e.dataTransfer.files[0]); });
+    document.querySelectorAll('#modos button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        modo = b.dataset.modo;
+        document.querySelectorAll('#modos button').forEach(function (x) { x.classList.toggle('on', x === b); });
+        if (arquivo) escolher(arquivo);
+      });
+    });
+    $('#enviar').addEventListener('click', enviar);
+    $('#exemplo').addEventListener('click', exemplo);
+    try {
+      var r = await fetch('config.json', { cache: 'no-store' });
+      cfg = await r.json();
+    } catch (e) {
+      $('#health').className = 'health off';
+      $('#health').querySelector('span').textContent = 'config.json não encontrado: rode o init-localstack.sh';
+      return;
+    }
+    if (arquivo) $('#enviar').disabled = false;
+    verificarApi();
+    setInterval(verificarApi, 15000);
+    olharFilas();
+    setInterval(olharFilas, 1500);
+    ouvirSns();
+  }
+
+  window.demo = { escolher: escolher, enviar: enviar, exemplo: exemplo, runs: runs, modo: function (m) { modo = m; } };
+  iniciar();
+})();
+</script>
+</body>
+</html>

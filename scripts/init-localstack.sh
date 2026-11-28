@@ -17,6 +17,8 @@ QUEUE_NAME="media-transcode-queue"
 DLQ_NAME="media-transcode-dlq"
 TOPIC_NAME="media-status-notifications"
 API_NAME="media-transcode-api"
+UI_BUCKET="media-ui"
+UI_EVENTS_QUEUE="media-ui-events"
 LAMBDA_IMAGE="public.ecr.aws/lambda/python:3.11"
 LAMBDA_PLATFORM="linux/amd64"
 
@@ -309,6 +311,70 @@ if ! alc apigateway get-usage-plan-keys --usage-plan-id "$USAGE_ID" \
 fi
 echo "[init] API Gateway REST: $API_ID (stage dev)"
 
+if ! alc s3api head-bucket --bucket "$UI_BUCKET" >/dev/null 2>&1; then
+  alc s3api create-bucket --bucket "$UI_BUCKET" >/dev/null
+fi
+
+alc sqs create-queue --queue-name "$UI_EVENTS_QUEUE" >/dev/null
+UI_QUEUE_URL="$(alc sqs get-queue-url --queue-name "$UI_EVENTS_QUEUE" --query QueueUrl --output text | tr -d '\r')"
+UI_QUEUE_ARN="$(alc sqs get-queue-attributes --queue-url "$UI_QUEUE_URL" \
+  --attribute-names QueueArn --query 'Attributes.QueueArn' --output text | tr -d '\r')"
+
+python3 - "$BUILD/ui-queue-policy.json" "$UI_QUEUE_ARN" "$TOPIC_ARN" <<'PY'
+import json
+import sys
+
+output, queue_arn, topic_arn = sys.argv[1], sys.argv[2], sys.argv[3]
+policy = {
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowSNS",
+            "Effect": "Allow",
+            "Principal": {"Service": "sns.amazonaws.com"},
+            "Action": "sqs:SendMessage",
+            "Resource": queue_arn,
+            "Condition": {"ArnEquals": {"aws:SourceArn": topic_arn}},
+        }
+    ],
+}
+with open(output, "w", encoding="utf-8") as handle:
+    json.dump({"Policy": json.dumps(policy)}, handle)
+PY
+alc sqs set-queue-attributes --queue-url "$UI_QUEUE_URL" \
+  --attributes "file:///opt/lambda-packages/ui-queue-policy.json" >/dev/null
+
+if ! alc sns list-subscriptions-by-topic --topic-arn "$TOPIC_ARN" \
+  --query "Subscriptions[?Endpoint=='$UI_QUEUE_ARN'].SubscriptionArn" --output text | grep -q ':'; then
+  alc sns subscribe --topic-arn "$TOPIC_ARN" --protocol sqs \
+    --notification-endpoint "$UI_QUEUE_ARN" \
+    --attributes RawMessageDelivery=true >/dev/null
+fi
+
+mkdir -p "$BUILD/ui"
+cp "$ROOT/interface/index.html" "$BUILD/ui/index.html"
+python3 - "$BUILD/ui/config.json" "$API_ID" "$API_KEY" "$QUEUE_URL" "$DLQ_URL" "$UI_QUEUE_URL" \
+  "$RAW_BUCKET" "$PROCESSED_BUCKET" <<'PY'
+import json
+import sys
+
+output, api_id, api_key, queue_url, dlq_url, events_url, raw_bucket, processed_bucket = sys.argv[1:9]
+config = {
+    "apiBase": f"/restapis/{api_id}/dev/_user_request_",
+    "apiKey": api_key,
+    "queueUrl": queue_url,
+    "dlqUrl": dlq_url,
+    "eventsQueueUrl": events_url,
+    "rawBucket": raw_bucket,
+    "processedBucket": processed_bucket,
+}
+with open(output, "w", encoding="utf-8") as handle:
+    json.dump(config, handle, indent=2)
+PY
+alc s3 cp /opt/lambda-packages/ui "s3://$UI_BUCKET/" --recursive >/dev/null
+UI_URL="$PUBLIC_S3_ENDPOINT/$UI_BUCKET/index.html"
+echo "[init] Interface publicada em $UI_URL"
+
 cat > "$STATE/env" <<EOF
 export AWS_REGION="$REGION"
 export REST_API_ID="$API_ID"
@@ -328,5 +394,6 @@ cat <<EOF
   API key  : $STATE/api-key.txt
   Fila     : $QUEUE_URL
   DLQ      : $DLQ_URL
+  Interface: $UI_URL
   Próximo  : scripts/test-flow.sh
 EOF
