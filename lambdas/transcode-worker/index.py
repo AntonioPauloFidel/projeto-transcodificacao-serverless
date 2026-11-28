@@ -304,41 +304,46 @@ def handler(event, context):
             logger.warning("Mensagem SQS ignorada (JSON inválido): %s", body[:200])
             continue
 
-        s3_records = message.get("Records")
-        if (
-            isinstance(s3_records, list)
-            and s3_records
-            and isinstance(s3_records[0], dict)
-            and "s3" in s3_records[0]
-        ):
-            info = s3_records[0]["s3"]
-            bucket = info["bucket"]["name"]
-            key = unquote_plus(info["object"]["key"])
-            head = s3.head_object(Bucket=bucket, Key=key)
-            media_id = (head.get("Metadata") or {}).get("media-id") or hashlib.sha256(
-                key.encode("utf-8")
-            ).hexdigest()[:16]
-        else:
-            bucket = message.get("bucket") or RAW_BUCKET
-            key = message.get("key")
-            media_id = message.get("media_id")
-            if not key:
-                logger.warning("Mensagem sem 'key': %s", body[:200])
-                continue
-            if not media_id:
+        media_id = None
+        key = None
+        try:
+            s3_records = message.get("Records")
+            if (
+                isinstance(s3_records, list)
+                and s3_records
+                and isinstance(s3_records[0], dict)
+                and "s3" in s3_records[0]
+            ):
+                info = s3_records[0]["s3"]
+                bucket = info["bucket"]["name"]
+                key = unquote_plus(info["object"]["key"])
                 head = s3.head_object(Bucket=bucket, Key=key)
                 media_id = (head.get("Metadata") or {}).get("media-id") or hashlib.sha256(
                     key.encode("utf-8")
                 ).hexdigest()[:16]
+            else:
+                bucket = message.get("bucket") or RAW_BUCKET
+                key = message.get("key")
+                media_id = message.get("media_id")
+                if not key:
+                    logger.warning("Mensagem sem 'key': %s", body[:200])
+                    continue
+                if not media_id:
+                    head = s3.head_object(Bucket=bucket, Key=key)
+                    media_id = (head.get("Metadata") or {}).get("media-id") or hashlib.sha256(
+                        key.encode("utf-8")
+                    ).hexdigest()[:16]
 
-        try:
             _process(media_id, bucket, key)
         except ProcessingInProgress as exc:
             logger.info("Mídia ainda em processamento, a mensagem volta para a fila: %s", exc)
             retry.append(media_id)
         except Exception:
-            logger.exception("Falha ao processar %s; a mensagem volta para a fila", media_id)
-            retry.append(media_id)
+            # Inclui falhas no head_object: só esta mensagem volta para a fila,
+            # o restante do lote continua sendo processado.
+            label = media_id or key or record.get("messageId") or "?"
+            logger.exception("Falha ao processar %s; a mensagem volta para a fila", label)
+            retry.append(label)
 
     if retry:
         raise RuntimeError(f"Mensagens que voltam para a fila: {', '.join(retry)}")
